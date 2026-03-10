@@ -203,6 +203,9 @@ The range query recursively traverses the octree, testing each child's AABB agai
 ```
 RecursiveRangeQuery(parentBounds, parentContained, offset, depth):
     For each of 8 children:
+        elementCount = lookup[child index]
+        If elementCount == 0: skip (no elements in subtree)
+
         childBounds = GetChildBounds(parentBounds, childIndex)
 
         If parent already fully contained by query:
@@ -214,15 +217,20 @@ RecursiveRangeQuery(parentBounds, parentContained, offset, depth):
 
         If node has too many elements and depth < maxDepth:
             recurse deeper
-        Else if node is a leaf with elements:
+        Else (node is a leaf with elements):
             If contained: bulk memcpy all elements to results
             Else: per-element point-in-AABB test
 ```
 
-Key optimization: when a child is fully contained by the query AABB, all elements in that subtree
-are guaranteed to match. This allows a `UnsafeUtility.MemCpy` of the entire leaf's elements
-without testing each one individually. The `contained` flag propagates to all deeper children,
-turning the per-element test into a bulk copy for large query regions.
+Key optimizations:
+- Empty children (`elementCount == 0`) are skipped before any AABB math, avoiding `GetChildBounds`
+  and intersection tests for the majority of children in sparse octrees.
+- When a child is fully contained by the query AABB, all elements in that subtree are guaranteed
+  to match. This allows a `UnsafeUtility.MemCpy` of the entire leaf's elements without testing
+  each one individually. The `contained` flag propagates to all deeper children, turning the
+  per-element test into a bulk copy for large query regions.
+- Raw pointers to `lookup`, `nodes`, and `elements` are cached at query start to avoid repeated
+  double indirection (struct field → UnsafeList pointer → Ptr) during recursive traversal.
 
 ---
 
@@ -274,9 +282,13 @@ The elements array grows dynamically to fit the inserted element count.
 - `[MethodImpl(AggressiveInlining)]` on hot-path methods (`IncrementIndex`, `GetChildBounds`,
   `Intersects`, `EncodeScaled`) ensures they are inlined into the caller
 - `SharedStatic<T>` lookup tables avoid the managed-to-native bridge penalty on every table read
+- `DepthSizeLookup` pointer cached once per bulk insert and passed through, avoiding repeated
+  `SharedStatic` resolution in hot loops
 - Direct pointer indexing (`ptr[i]`) instead of `UnsafeUtility.ReadArrayElement` for cleaner
-  Burst codegen
+  Burst codegen; morton codes use raw `int*` via `NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr`
 - `math.select` for branchless child bounds computation (compiles to conditional moves, no branches)
+- `math.all(math.abs(...) < ...)` for vectorized AABB intersection (SIMD subtract + abs + compare
+  + horizontal-AND, instead of three scalar chains with short-circuit branches)
 - `math.clamp` for bounds-safe morton encoding without branch overhead
 - `UnsafeUtility.MemCpy` for bulk element copying when a query AABB fully contains a leaf
 

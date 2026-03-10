@@ -34,9 +34,7 @@ namespace NativeOctree
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool Intersects(AABB a, AABB b)
         {
-            return math.abs(a.Center.x - b.Center.x) < (a.Extents.x + b.Extents.x) &&
-                   math.abs(a.Center.y - b.Center.y) < (a.Extents.y + b.Extents.y) &&
-                   math.abs(a.Center.z - b.Center.z) < (a.Extents.z + b.Extents.z);
+            return math.all(math.abs(a.Center - b.Center) < (a.Extents + b.Extents));
         }
 
         /// <summary>

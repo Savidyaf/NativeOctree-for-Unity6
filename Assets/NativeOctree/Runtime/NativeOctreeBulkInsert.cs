@@ -33,23 +33,30 @@ namespace NativeOctree
                 mortonCodes[i] = MortonCodeUtil.EncodeScaled(incomingElements[i].pos, bounds, depthExtentsScaling);
             }
 
+            var mortonCodesPtr = (int*)NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(mortonCodes);
+            ref var depthSizeLookupData = ref LookupTables.DepthSizeLookup.Data;
+            var depthSizePtr = (int*)UnsafeUtility.AddressOf(ref depthSizeLookupData);
+
             var lookupPtr = lookup->Ptr;
-            for (var i = 0; i < mortonCodes.Length; i++)
+            for (var i = 0; i < incomingElements.Length; i++)
             {
+                int mortonCode = mortonCodesPtr[i];
                 int atIndex = 0;
-                for (int depth = 0; depth <= maxDepth; depth++)
+                for (int depth = 0; depth < maxDepth; depth++)
                 {
                     lookupPtr[atIndex]++;
-                    atIndex = IncrementIndex(depth, mortonCodes, i, atIndex);
+                    atIndex = IncrementIndex(atIndex, mortonCode, maxDepth - 1 - depth, depthSizePtr);
                 }
+                lookupPtr[atIndex]++;
             }
 
-            RecursivePrepareLeaves(1, 1);
+            RecursivePrepareLeaves(1, 1, depthSizePtr);
 
             var nodesPtr = nodes->Ptr;
             var elementsPtr = elements->Ptr;
             for (var i = 0; i < incomingElements.Length; i++)
             {
+                int mortonCode = mortonCodesPtr[i];
                 int atIndex = 0;
                 for (int depth = 0; depth <= maxDepth; depth++)
                 {
@@ -60,7 +67,7 @@ namespace NativeOctree
                         node.count++;
                         break;
                     }
-                    atIndex = IncrementIndex(depth, mortonCodes, i, atIndex);
+                    atIndex = IncrementIndex(atIndex, mortonCode, maxDepth - 1 - depth, depthSizePtr);
                 }
             }
 
@@ -68,28 +75,26 @@ namespace NativeOctree
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        int IncrementIndex(int depth, NativeArray<int> mortonCodes, int i, int atIndex)
+        static int IncrementIndex(int atIndex, int mortonCode, int remainingDepth, int* depthSizePtr)
         {
-            var atDepth = math.max(0, maxDepth - depth);
-            int shiftedMortonCode = (mortonCodes[i] >> ((atDepth - 1) * 3)) & 0b111;
-            atIndex += LookupTables.DepthSizeLookup.Data.Values[atDepth] * shiftedMortonCode;
-            atIndex++;
-            return atIndex;
+            int octant = (mortonCode >> (remainingDepth * 3)) & 0b111;
+            return atIndex + depthSizePtr[remainingDepth + 1] * octant + 1;
         }
 
-        void RecursivePrepareLeaves(int prevOffset, int depth)
+        void RecursivePrepareLeaves(int prevOffset, int depth, int* depthSizePtr)
         {
             var lookupPtr = lookup->Ptr;
             var nodesPtr = nodes->Ptr;
 
+            var depthSize = depthSizePtr[maxDepth - depth + 1];
             for (int l = 0; l < 8; l++)
             {
-                var at = prevOffset + l * LookupTables.DepthSizeLookup.Data.Values[maxDepth - depth + 1];
+                var at = prevOffset + l * depthSize;
                 var elementCount = lookupPtr[at];
 
                 if (elementCount > maxLeafElements && depth < maxDepth)
                 {
-                    RecursivePrepareLeaves(at + 1, depth + 1);
+                    RecursivePrepareLeaves(at + 1, depth + 1, depthSizePtr);
                 }
                 else if (elementCount != 0)
                 {

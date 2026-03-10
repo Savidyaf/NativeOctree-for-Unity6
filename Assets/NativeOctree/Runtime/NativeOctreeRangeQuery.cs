@@ -13,6 +13,10 @@ namespace NativeOctree
             int count;
             AABB bounds;
 
+            int* lookupPtr;
+            OctNode* nodesPtr;
+            OctElement<T>* elementsPtr;
+
             public void Query(NativeOctree<T> tree, AABB bounds, NativeList<OctElement<T>> results)
             {
                 this.tree = tree;
@@ -20,6 +24,9 @@ namespace NativeOctree
                 count = 0;
 
                 fastResults = results.GetUnsafeList();
+                lookupPtr = tree.lookup->Ptr;
+                nodesPtr = tree.nodes->Ptr;
+                elementsPtr = tree.elements->Ptr;
 
                 RecursiveRangeQuery(tree.bounds, false, 1, 1);
 
@@ -38,6 +45,10 @@ namespace NativeOctree
 
                 for (int l = 0; l < 8; l++)
                 {
+                    var at = prevOffset + l * depthSize;
+                    var elementCount = lookupPtr[at];
+                    if (elementCount == 0) continue;
+
                     var childBounds = OctreeMath.GetChildBounds(parentBounds, l);
 
                     var contained = parentContained;
@@ -53,22 +64,19 @@ namespace NativeOctree
                         }
                     }
 
-                    var at = prevOffset + l * depthSize;
-                    var elementCount = tree.lookup->Ptr[at];
-
                     if (elementCount > tree.maxLeafElements && depth < tree.maxDepth)
                     {
                         RecursiveRangeQuery(childBounds, contained, at + 1, depth + 1);
                     }
-                    else if (elementCount != 0)
+                    else
                     {
-                        var node = tree.nodes->Ptr[at];
+                        var node = nodesPtr[at];
 
                         if (contained)
                         {
                             UnsafeUtility.MemCpy(
                                 fastResults->Ptr + count,
-                                tree.elements->Ptr + node.firstChildIndex,
+                                elementsPtr + node.firstChildIndex,
                                 node.count * UnsafeUtility.SizeOf<OctElement<T>>());
                             count += node.count;
                         }
@@ -76,7 +84,7 @@ namespace NativeOctree
                         {
                             for (int k = 0; k < node.count; k++)
                             {
-                                var element = tree.elements->Ptr[node.firstChildIndex + k];
+                                var element = elementsPtr[node.firstChildIndex + k];
                                 if (OctreeMath.Contains(bounds, element.pos))
                                 {
                                     fastResults->Ptr[count++] = element;

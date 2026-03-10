@@ -118,6 +118,12 @@ namespace NativeOctree
             elementsCount = 0;
         }
 
+        /// <summary>
+        /// The number of elements currently stored in the octree.
+        /// Useful for pre-sizing result lists before calling <see cref="RangeQuery"/>.
+        /// </summary>
+        public int Count => elementsCount;
+
         internal AABB Bounds => bounds;
         internal int NodeCount => TotalNodeCount;
         internal OctNode* NodesPtr => nodes->Ptr;
