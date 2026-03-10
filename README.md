@@ -1,5 +1,6 @@
-# Native Octree
-An Octree Native Collection for Unity DOTS. It's ported from https://github.com/marijnz/NativeQuadtree with very few changes.
+
+# Fork of Native Octree
+This is based on https://github.com/marijnz/NativeOctree with few upgrades and improvements to work better with unity 6.
 
 ## Implementation
 - It's a DOTS native container, meaning it's handling its own unmanaged memory and can be passed into jobs!
